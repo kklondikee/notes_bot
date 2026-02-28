@@ -41,3 +41,10 @@ def cancel_inline():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action")]
     ])
+
+def tags_inline(tags):
+    """Инлайн-клавиатура со списком тегов (для выбора)."""
+    buttons = []
+    for tag_name, count in tags:
+        buttons.append([InlineKeyboardButton(text=f"{tag_name} ({count})", callback_data=f"tag_{tag_name}")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

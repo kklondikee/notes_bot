@@ -7,7 +7,6 @@ import database as db
 scheduler = AsyncIOScheduler()
 
 async def check_reminders(bot: Bot):
-    """Проверяет просроченные напоминания и отправляет их."""
     reminders = db.get_pending_reminders()
     for note_id, user_id, title, text in reminders:
         await bot.send_message(
@@ -18,7 +17,6 @@ async def check_reminders(bot: Bot):
         db.mark_reminder_sent(note_id)
 
 def start_scheduler(bot: Bot):
-    """Запускает планировщик с задачей проверки раз в минуту."""
     scheduler.add_job(
         check_reminders,
         trigger=IntervalTrigger(minutes=1),
