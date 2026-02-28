@@ -124,10 +124,10 @@ async def show_note(callback: CallbackQuery):
             reply_markup=kb
         )
     else:
-        try:
+        await callback.message.answer("Заметка не найдена.")
+    try:
         await callback.answer()
     except Exception:
-        # Если callback устарел, просто игнорируем
         pass
 
 # -------------------------------------------------------------------
