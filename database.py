@@ -19,6 +19,15 @@ def init_db():
                 sent INTEGER DEFAULT 0
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                note_id INTEGER NOT NULL,
+                file_type TEXT NOT NULL,
+                file_id TEXT NOT NULL,
+                FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE
+            )
+        """)
         conn.commit()
     init_tags_tables()
 
@@ -84,13 +93,35 @@ def mark_reminder_sent(note_id: int):
         cur.execute("UPDATE notes SET sent = 1 WHERE id = ?", (note_id,))
         conn.commit()
 
+# ==================== РАБОТА С ФАЙЛАМИ ====================
+
+def add_file(note_id: int, file_type: str, file_id: str):
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO files (note_id, file_type, file_id) VALUES (?, ?, ?)",
+            (note_id, file_type, file_id)
+        )
+        conn.commit()
+
+def get_note_files(note_id: int):
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT file_type, file_id FROM files WHERE note_id = ?",
+            (note_id,)
+        )
+        return cur.fetchall()
+
+def delete_note_files(note_id: int):
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM files WHERE note_id = ?", (note_id,))
+        conn.commit()
+
 # ==================== ПОИСК ====================
 
 def search_notes(user_id: int, query: str):
-    """
-    Ищет заметки пользователя по заголовку или тексту (регистронезависимо).
-    Возвращает список (id, title).
-    """
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         like_query = f"%{query}%"
@@ -174,19 +205,6 @@ def get_user_tags(user_id: int):
             GROUP BY t.id
             ORDER BY t.name
         """, (user_id,))
-        return cur.fetchall()
-
-def get_notes_by_tag(user_id: int, tag_name: str):
-    tag_name = tag_name.strip().lower()
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT n.id, n.title FROM notes n
-            JOIN note_tags nt ON n.id = nt.note_id
-            JOIN tags t ON nt.tag_id = t.id
-            WHERE n.user_id = ? AND t.name = ?
-            ORDER BY n.id DESC
-        """, (user_id, tag_name))
         return cur.fetchall()
 
 def update_note_tags(note_id: int, new_tag_ids: list):

@@ -10,7 +10,7 @@ from states import NoteStates, EditNoteStates
 router = Router()
 
 # -------------------------------------------------------------------
-# СОЗДАНИЕ НОВОЙ ЗАМЕТКИ (с тегами)
+# СОЗДАНИЕ НОВОЙ ЗАМЕТКИ (с тегами и медиа)
 # -------------------------------------------------------------------
 @router.message(Command("new"))
 @router.message(F.text == "📝 Новая заметка")
@@ -70,8 +70,8 @@ async def process_tags(message: Message, state: FSMContext):
         await message.answer("Что-то пошло не так. Начните создание заметки заново с команды /new", reply_markup=main_menu())
         return
 
-    title = data['title']
-    text = data['text']
+    title = data['title'] or ""
+    text = data['text'] or ""
     remind_iso = data.get('remind')
     tags_str = message.text.strip()
 
@@ -85,6 +85,12 @@ async def process_tags(message: Message, state: FSMContext):
             tag_ids.append(tag_id)
         if tag_ids:
             db.add_note_tags(note_id, tag_ids)
+
+    # Сохраняем файлы, если были добавлены в состояние
+    if 'photo_file_id' in data:
+        db.add_file(note_id, 'photo', data['photo_file_id'])
+    if 'doc_file_id' in data:
+        db.add_file(note_id, 'document', data['doc_file_id'])
 
     await state.clear()
     await message.answer("✅ Заметка сохранена!", reply_markup=main_menu())
@@ -103,7 +109,7 @@ async def list_notes(message: Message):
     await message.answer("Ваши заметки:", reply_markup=kb)
 
 # -------------------------------------------------------------------
-# ПРОСМОТР КОНКРЕТНОЙ ЗАМЕТКИ (с тегами)
+# ПРОСМОТР КОНКРЕТНОЙ ЗАМЕТКИ (с тегами и медиа)
 # -------------------------------------------------------------------
 @router.callback_query(F.data.startswith("note_"))
 async def show_note(callback: CallbackQuery):
@@ -114,12 +120,32 @@ async def show_note(callback: CallbackQuery):
         remind_str = f"\n\n⏰ Напоминание: {remind_at}" if remind_at else ""
         tags = db.get_note_tags(note_id)
         tags_str = f"\n\n🏷 Теги: {', '.join(tags)}" if tags else ""
+
+        files = db.get_note_files(note_id)
         kb = note_actions_inline(note_id)
-        await callback.message.answer(
-            f"*{title}*\n\n{text}{remind_str}{tags_str}",
-            parse_mode="Markdown",
-            reply_markup=kb
-        )
+
+        photos = [f for f in files if f[0] == 'photo']
+        if photos:
+            await callback.message.answer_photo(
+                photo=photos[0][1],
+                caption=f"*{title}*\n\n{text}{remind_str}{tags_str}",
+                parse_mode="Markdown",
+                reply_markup=kb
+            )
+        else:
+            await callback.message.answer(
+                f"*{title}*\n\n{text}{remind_str}{tags_str}",
+                parse_mode="Markdown",
+                reply_markup=kb
+            )
+
+        for file_type, file_id in files[1:]:
+            if file_type == 'photo':
+                await callback.message.answer_photo(photo=file_id)
+            elif file_type == 'voice':
+                await callback.message.answer_voice(voice=file_id)
+            elif file_type == 'document':
+                await callback.message.answer_document(document=file_id)
     else:
         await callback.message.answer("Заметка не найдена.")
     try:
@@ -150,7 +176,7 @@ async def cancel_delete(callback: CallbackQuery):
     await callback.answer()
 
 # -------------------------------------------------------------------
-# РЕДАКТИРОВАНИЕ (обновлено с учётом тегов)
+# РЕДАКТИРОВАНИЕ (с тегами)
 # -------------------------------------------------------------------
 @router.callback_query(F.data.startswith("edit_"))
 async def edit_note_start(callback: CallbackQuery, state: FSMContext):
@@ -272,23 +298,17 @@ async def show_tags(message: Message):
 # -------------------------------------------------------------------
 @router.message(Command("search"))
 async def search_notes(message: Message):
-    print("DEBUG: search_notes вызвана")  # добавить
-    ...
-    # Получаем текст после команды /search
-    command_parts = message.text.split(maxsplit=1)
-    if len(command_parts) < 2:
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
         await message.answer("Введите слово для поиска после команды /search, например:\n/search работа")
         return
-
-    query = command_parts[1].strip()
+    query = parts[1].strip()
     if not query:
         await message.answer("Пустой запрос. Введите слово для поиска.")
         return
-
     results = db.search_notes(message.from_user.id, query)
     if not results:
         await message.answer(f"По запросу «{query}» ничего не найдено.")
         return
-
     kb = notes_inline(results)
     await message.answer(f"Результаты поиска по «{query}»:", reply_markup=kb)
