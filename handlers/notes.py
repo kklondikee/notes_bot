@@ -120,26 +120,17 @@ async def show_note(callback: CallbackQuery):
         remind_str = f"\n\n⏰ Напоминание: {remind_at}" if remind_at else ""
         tags = db.get_note_tags(note_id)
         tags_str = f"\n\n🏷 Теги: {', '.join(tags)}" if tags else ""
-
         files = db.get_note_files(note_id)
         kb = note_actions_inline(note_id)
-
-        photos = [f for f in files if f[0] == 'photo']
-        if photos:
-            await callback.message.answer_photo(
-                photo=photos[0][1],
-                caption=f"*{title}*\n\n{text}{remind_str}{tags_str}",
-                parse_mode="Markdown",
-                reply_markup=kb
-            )
-        else:
-            await callback.message.answer(
-                f"*{title}*\n\n{text}{remind_str}{tags_str}",
-                parse_mode="Markdown",
-                reply_markup=kb
-            )
-
-        for file_type, file_id in files[1:]:
+        # Добавляем ID в начало сообщения
+        header = f"*{title}*\n🆔 ID: `{note_id}`"
+        await callback.message.answer(
+            f"{header}\n\n{text}{remind_str}{tags_str}",
+            parse_mode="Markdown",
+            reply_markup=kb
+        )
+        # Отправляем файлы, если есть
+        for file_type, file_id in files:
             if file_type == 'photo':
                 await callback.message.answer_photo(photo=file_id)
             elif file_type == 'voice':
@@ -312,3 +303,23 @@ async def search_notes(message: Message):
         return
     kb = notes_inline(results)
     await message.answer(f"Результаты поиска по «{query}»:", reply_markup=kb)
+
+# -------------------------------------------------------------------
+# ПРОСМОТР ЗАМЕТОК ПО ТЕГУ
+# -------------------------------------------------------------------
+@router.message(Command("tag"))
+async def notes_by_tag(message: Message):
+    """Показывает заметки, содержащие указанный тег."""
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer("Введите название тега после команды, например:\n/tag работа")
+        return
+
+    tag_name = args[1].strip().lower()
+    notes = db.get_notes_by_tag(message.from_user.id, tag_name)
+    if not notes:
+        await message.answer(f"У вас нет заметок с тегом «{tag_name}».")
+        return
+
+    kb = notes_inline(notes)
+    await message.answer(f"Заметки с тегом «{tag_name}»:", reply_markup=kb)

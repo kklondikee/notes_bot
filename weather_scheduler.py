@@ -12,6 +12,8 @@ async def send_morning_weather(bot: Bot):
     print(f"🌤 Запуск утренней рассылки погоды в {now}")
 
     users = db.get_subscribed_users()
+    print(f"🕒 Запуск рассылки в {datetime.now().strftime('%H:%M:%S')}, пользователей: {len(users)}")
+
     for user_id, city in users:
         try:
             weather_data = await get_weather(city)
@@ -23,7 +25,7 @@ async def send_morning_weather(bot: Bot):
                 continue
 
             message = (
-                f"🌅 *Доброе утро!* Погода на сегодня в {weather_data['city']}\n\n"
+                f"🌅 *Доброе утро!* Погода на сегодня в городе{weather_data['city']}\n\n"
                 f"{weather_data['icon']} {weather_data['description']}\n"
                 f"🌡 Температура: {weather_data['temperature']}°C\n"
                 f"↕️ В течение дня: от {weather_data['min_temp']}°C до {weather_data['max_temp']}°C\n"
@@ -42,10 +44,10 @@ async def send_morning_weather(bot: Bot):
 def start_weather_scheduler(bot: Bot):
     scheduler.add_job(
         send_morning_weather,
-        trigger=CronTrigger(hour=7, minute=0),
+        trigger=CronTrigger(hour=datetime.now().hour, minute=0),  # Запуск каждый день в 7:00 МСК (UTC+3)
         args=[bot],
         id="morning_weather",
         replace_existing=True
     )
     scheduler.start()
-    print("🌤 Планировщик погоды запущен, следующая рассылка в 7:00 UTC")
+    print("🌤 Планировщик погоды запущен, следующая рассылка в 4:00 UTC")

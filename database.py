@@ -6,7 +6,6 @@ DB_NAME = "notes.db"
 # ==================== ОСНОВНЫЕ ТАБЛИЦЫ ====================
 
 def init_db():
-    """Создаёт таблицы, если их нет."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -31,6 +30,7 @@ def init_db():
         conn.commit()
     init_tags_tables()
     init_users_table()
+    init_shared_table()   # <-- добавить эту строку
 
 def add_note(user_id: int, title: str, text: str, remind_at: str = None) -> int:
     with sqlite3.connect(DB_NAME) as conn:
@@ -318,3 +318,68 @@ def get_subscribed_users():
         cur = conn.cursor()
         cur.execute("SELECT user_id, city FROM users WHERE city IS NOT NULL AND subscribed = 1")
         return cur.fetchall()
+
+# ==================== СОВМЕСТНЫЕ ЗАМЕТКИ ====================
+
+def init_shared_table():
+    """Создаёт таблицу для совместных заметок."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS shared_notes (
+                note_id INTEGER,
+                shared_with_user_id INTEGER,
+                owner_user_id INTEGER,
+                PRIMARY KEY (note_id, shared_with_user_id),
+                FOREIGN KEY(note_id) REFERENCES notes(id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()
+
+# Добавьте вызов init_shared_table() в функцию init_db() после создания других таблиц.
+
+def share_note(note_id: int, owner_id: int, target_user_id: int):
+    """Предоставляет доступ к заметке другому пользователю."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT OR IGNORE INTO shared_notes (note_id, shared_with_user_id, owner_user_id) VALUES (?, ?, ?)",
+            (note_id, target_user_id, owner_id)
+        )
+        conn.commit()
+
+def get_shared_notes(user_id: int):
+    """Возвращает список заметок, доступных пользователю (чужие, расшаренные с ним)."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT n.id, n.title, n.user_id as owner_id
+            FROM notes n
+            JOIN shared_notes s ON n.id = s.note_id
+            WHERE s.shared_with_user_id = ?
+            ORDER BY n.id DESC
+        """, (user_id,))
+        return cur.fetchall()  # список (id, title, owner_id)
+
+def get_shared_note(note_id: int, user_id: int):
+    """Возвращает заметку, если пользователь имеет к ней доступ (владелец или есть в shared)."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        # Проверяем, является ли пользователь владельцем
+        cur.execute("SELECT user_id FROM notes WHERE id = ?", (note_id,))
+        row = cur.fetchone()
+        if row and row[0] == user_id:
+            # владелец – полный доступ
+            cur.execute("SELECT title, text, remind_at FROM notes WHERE id = ?", (note_id,))
+            return cur.fetchone() + (True,)  # (title, text, remind_at, is_owner)
+        # Иначе проверяем shared
+        cur.execute("""
+            SELECT n.title, n.text, n.remind_at, n.user_id
+            FROM notes n
+            JOIN shared_notes s ON n.id = s.note_id
+            WHERE n.id = ? AND s.shared_with_user_id = ?
+        """, (note_id, user_id))
+        row = cur.fetchone()
+        if row:
+            return row + (False,)  # (title, text, remind_at, owner_id, is_owner=False)
+        return None

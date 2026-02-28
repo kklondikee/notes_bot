@@ -12,10 +12,10 @@ def main_menu():
         resize_keyboard=True
     )
 
-def notes_inline(notes):
+def notes_inline(notes, prefix="note"):
     buttons = []
     for note_id, title in notes:
-        buttons.append([InlineKeyboardButton(text=title, callback_data=f"note_{note_id}")])
+        buttons.append([InlineKeyboardButton(text=title, callback_data=f"{prefix}_{note_id}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def note_actions_inline(note_id: int):
