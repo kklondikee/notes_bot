@@ -1,7 +1,8 @@
 from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command, CommandStart
-from keyboards import main_menu
+import database as db                          # добавили импорт БД
+from keyboards import main_menu, weather_inline # добавили weather_inline
 
 router = Router()
 
@@ -27,3 +28,12 @@ async def cmd_help(message: Message):
         "/help - помощь\n\n"
         "Также можно отправлять фото и голосовые сообщения."
     )
+
+# НОВЫЙ ОБРАБОТЧИК ДЛЯ КНОПКИ "🌤 Погода"
+@router.message(F.text == "🌤 Погода")
+async def weather_menu(message: Message):
+    """Показывает инлайн-меню с действиями для погоды."""
+    city = db.get_user_city(message.from_user.id)
+    has_city = city is not None
+    kb = weather_inline(has_city)
+    await message.answer("🌤 Выберите действие:", reply_markup=kb)

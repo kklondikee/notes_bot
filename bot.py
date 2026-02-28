@@ -4,7 +4,8 @@ from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from database import init_db
 from scheduler import start_scheduler
-from handlers import common_router, notes_router, media_router
+from weather_scheduler import start_weather_scheduler
+from handlers import common_router, notes_router, media_router, weather_router, admin_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -16,8 +17,11 @@ async def main():
     dp.include_router(common_router)
     dp.include_router(notes_router)
     dp.include_router(media_router)
+    dp.include_router(weather_router)
+    dp.include_router(admin_router)
 
     start_scheduler(bot)
+    start_weather_scheduler(bot)
 
     await dp.start_polling(bot)
 

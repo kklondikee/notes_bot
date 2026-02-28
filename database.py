@@ -30,6 +30,7 @@ def init_db():
         """)
         conn.commit()
     init_tags_tables()
+    init_users_table()
 
 def add_note(user_id: int, title: str, text: str, remind_at: str = None) -> int:
     with sqlite3.connect(DB_NAME) as conn:
@@ -217,3 +218,103 @@ def update_note_tags(note_id: int, new_tag_ids: list):
                 (note_id, tag_id)
             )
         conn.commit()
+
+# ==================== ПОЛЬЗОВАТЕЛИ И ГОРОДА ====================
+
+def init_users_table():
+    """Создаёт таблицу users, если её нет."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                city TEXT,
+                subscribed INTEGER DEFAULT 1
+            )
+        """)
+        conn.commit()
+
+def set_user_city(user_id: int, city: str):
+    """Сохраняет город пользователя."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO users (user_id, city) VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET city = ?
+        """, (user_id, city, city))
+        conn.commit()
+
+def get_user_city(user_id: int) -> str | None:
+    """Возвращает сохранённый город пользователя или None."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT city FROM users WHERE user_id = ?", (user_id,))
+        row = cur.fetchone()
+        return row[0] if row else None
+
+def unsubscribe_user(user_id: int):
+    """Отписывает пользователя от рассылки."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO users (user_id, city, subscribed) VALUES (?, NULL, 0)
+            ON CONFLICT(user_id) DO UPDATE SET city = NULL, subscribed = 0
+        """, (user_id,))
+        conn.commit()
+
+def get_subscribed_users():
+    """Возвращает список (user_id, city) всех подписанных пользователей."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT user_id, city FROM users WHERE city IS NOT NULL AND subscribed = 1")
+        return cur.fetchall()
+
+# ==================== ПОЛЬЗОВАТЕЛИ И ГОРОДА ====================
+
+def init_users_table():
+    """Создаёт таблицу users, если её нет."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                city TEXT,
+                subscribed INTEGER DEFAULT 1
+            )
+        """)
+        conn.commit()
+
+def set_user_city(user_id: int, city: str):
+    """Сохраняет город пользователя."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO users (user_id, city) VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET city = ?
+        """, (user_id, city, city))
+        conn.commit()
+
+def get_user_city(user_id: int) -> str | None:
+    """Возвращает сохранённый город пользователя или None."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT city FROM users WHERE user_id = ?", (user_id,))
+        row = cur.fetchone()
+        return row[0] if row else None
+
+def unsubscribe_user(user_id: int):
+    """Отписывает пользователя от рассылки."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO users (user_id, city, subscribed) VALUES (?, NULL, 0)
+            ON CONFLICT(user_id) DO UPDATE SET city = NULL, subscribed = 0
+        """, (user_id,))
+        conn.commit()
+
+def get_subscribed_users():
+    """Возвращает список (user_id, city) всех подписанных пользователей."""
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT user_id, city FROM users WHERE city IS NOT NULL AND subscribed = 1")
+        return cur.fetchall()

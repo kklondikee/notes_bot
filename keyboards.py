@@ -1,10 +1,12 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 def main_menu():
+    """Главная reply-клавиатура с добавленной кнопкой погоды."""
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📝 Новая заметка")],
             [KeyboardButton(text="📋 Мои заметки")],
+            [KeyboardButton(text="🌤 Погода")],              # новая кнопка
             [KeyboardButton(text="❓ Помощь")]
         ],
         resize_keyboard=True
@@ -36,3 +38,17 @@ def cancel_inline():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action")]
     ])
+
+def weather_inline(has_city: bool = False):
+    """
+    Инлайн-клавиатура для погоды.
+    Если у пользователя уже есть город, показываем дополнительные опции.
+    """
+    buttons = []
+    # Основные кнопки
+    buttons.append([InlineKeyboardButton(text="🌍 Погода сейчас", callback_data="weather_now")])
+    buttons.append([InlineKeyboardButton(text="🏙 Мой город", callback_data="weather_mycity")])
+    buttons.append([InlineKeyboardButton(text="📍 Установить город", callback_data="weather_set")])
+    if has_city:
+        buttons.append([InlineKeyboardButton(text="🚫 Отписаться от рассылки", callback_data="weather_unset")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
