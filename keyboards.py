@@ -1,7 +1,6 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 def main_menu():
-    """Главная reply-клавиатура."""
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📝 Новая заметка")],
@@ -12,14 +11,12 @@ def main_menu():
     )
 
 def notes_inline(notes):
-    """Инлайн-клавиатура со списком заметок (заголовки)."""
     buttons = []
     for note_id, title in notes:
         buttons.append([InlineKeyboardButton(text=title, callback_data=f"note_{note_id}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def note_actions_inline(note_id: int):
-    """Инлайн-кнопки для конкретной заметки (редактировать/удалить)."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_{note_id}"),
@@ -28,7 +25,6 @@ def note_actions_inline(note_id: int):
     ])
 
 def confirm_delete_inline(note_id: int):
-    """Подтверждение удаления."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_del_{note_id}"),
@@ -37,13 +33,11 @@ def confirm_delete_inline(note_id: int):
     ])
 
 def cancel_inline():
-    """Кнопка отмены действия."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_action")]
     ])
 
 def tags_inline(tags):
-    """Инлайн-клавиатура со списком тегов (для выбора)."""
     buttons = []
     for tag_name, count in tags:
         buttons.append([InlineKeyboardButton(text=f"{tag_name} ({count})", callback_data=f"tag_{tag_name}")])

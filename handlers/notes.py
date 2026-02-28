@@ -55,7 +55,6 @@ async def process_remind(message: Message, state: FSMContext):
             await message.answer("Неверный формат. Попробуйте снова или отправьте '-'.")
             return
 
-    # Сохраняем основные данные заметки (без тегов) во временные данные
     await state.update_data(remind=remind_iso)
     await state.set_state(NoteStates.waiting_for_tags)
     await message.answer(
@@ -66,12 +65,11 @@ async def process_remind(message: Message, state: FSMContext):
 @router.message(NoteStates.waiting_for_tags)
 async def process_tags(message: Message, state: FSMContext):
     data = await state.get_data()
-    # Проверяем, есть ли все необходимые данные
     if 'title' not in data or 'text' not in data:
         await state.clear()
         await message.answer("Что-то пошло не так. Начните создание заметки заново с команды /new", reply_markup=main_menu())
         return
-    
+
     title = data['title']
     text = data['text']
     remind_iso = data.get('remind')
@@ -114,7 +112,6 @@ async def show_note(callback: CallbackQuery):
     if note:
         title, text, remind_at = note
         remind_str = f"\n\n⏰ Напоминание: {remind_at}" if remind_at else ""
-        # Получаем теги
         tags = db.get_note_tags(note_id)
         tags_str = f"\n\n🏷 Теги: {', '.join(tags)}" if tags else ""
         kb = note_actions_inline(note_id)
@@ -164,7 +161,6 @@ async def edit_note_start(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    # Получаем текущие теги
     current_tags = db.get_note_tags(note_id)
 
     await state.update_data(
@@ -237,7 +233,6 @@ async def edit_tags(message: Message, state: FSMContext):
     note_id = data['edit_note_id']
 
     if tags_str == "0":
-        # Удалить все теги
         db.update_note_tags(note_id, [])
     elif tags_str != "-":
         tag_names = [t.strip().lower() for t in tags_str.split() if t.strip()]
@@ -247,9 +242,7 @@ async def edit_tags(message: Message, state: FSMContext):
             tag_ids.append(tag_id)
         if tag_ids:
             db.update_note_tags(note_id, tag_ids)
-    # иначе tags_str == "-" – оставляем как есть
 
-    # Обновляем основные поля (если они изменились)
     db.update_note(
         note_id=note_id,
         title=data.get('new_title'),
@@ -273,3 +266,29 @@ async def show_tags(message: Message):
     for name, count in tags:
         lines.append(f"🏷 {name} — {count} заметок")
     await message.answer("\n".join(lines))
+
+# -------------------------------------------------------------------
+# ПОИСК ПО ЗАМЕТКАМ
+# -------------------------------------------------------------------
+@router.message(Command("search"))
+async def search_notes(message: Message):
+    print("DEBUG: search_notes вызвана")  # добавить
+    ...
+    # Получаем текст после команды /search
+    command_parts = message.text.split(maxsplit=1)
+    if len(command_parts) < 2:
+        await message.answer("Введите слово для поиска после команды /search, например:\n/search работа")
+        return
+
+    query = command_parts[1].strip()
+    if not query:
+        await message.answer("Пустой запрос. Введите слово для поиска.")
+        return
+
+    results = db.search_notes(message.from_user.id, query)
+    if not results:
+        await message.answer(f"По запросу «{query}» ничего не найдено.")
+        return
+
+    kb = notes_inline(results)
+    await message.answer(f"Результаты поиска по «{query}»:", reply_markup=kb)

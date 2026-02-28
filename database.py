@@ -20,10 +20,9 @@ def init_db():
             )
         """)
         conn.commit()
-    init_tags_tables()  # создаём таблицы для тегов
+    init_tags_tables()
 
 def add_note(user_id: int, title: str, text: str, remind_at: str = None) -> int:
-    """Добавляет заметку, возвращает её ID."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute(
@@ -34,7 +33,6 @@ def add_note(user_id: int, title: str, text: str, remind_at: str = None) -> int:
         return cur.lastrowid
 
 def get_user_notes(user_id: int):
-    """Возвращает список (id, title) для пользователя."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute(
@@ -44,7 +42,6 @@ def get_user_notes(user_id: int):
         return cur.fetchall()
 
 def get_note(note_id: int):
-    """Возвращает (title, text, remind_at) для заметки или None."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute(
@@ -55,7 +52,6 @@ def get_note(note_id: int):
         return row if row else None
 
 def update_note(note_id: int, title: str = None, text: str = None, remind_at: str = None):
-    """Обновляет поля заметки. Если параметр None – не меняется."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         if title is not None:
@@ -67,14 +63,12 @@ def update_note(note_id: int, title: str = None, text: str = None, remind_at: st
         conn.commit()
 
 def delete_note(note_id: int):
-    """Удаляет заметку."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute("DELETE FROM notes WHERE id = ?", (note_id,))
         conn.commit()
 
 def get_pending_reminders():
-    """Возвращает список (id, user_id, title, text) для напоминаний, которые нужно отправить."""
     now = datetime.now().isoformat()
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
@@ -85,19 +79,33 @@ def get_pending_reminders():
         return cur.fetchall()
 
 def mark_reminder_sent(note_id: int):
-    """Отмечает напоминание как отправленное."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute("UPDATE notes SET sent = 1 WHERE id = ?", (note_id,))
         conn.commit()
 
+# ==================== ПОИСК ====================
+
+def search_notes(user_id: int, query: str):
+    """
+    Ищет заметки пользователя по заголовку или тексту (регистронезависимо).
+    Возвращает список (id, title).
+    """
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        like_query = f"%{query}%"
+        cur.execute("""
+            SELECT id, title FROM notes
+            WHERE user_id = ? AND (title LIKE ? OR text LIKE ?)
+            ORDER BY id DESC
+        """, (user_id, like_query, like_query))
+        return cur.fetchall()
+
 # ==================== ТЕГИ ====================
 
 def init_tags_tables():
-    """Создаёт таблицы для тегов, если их нет."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
-        # Таблица тегов
         cur.execute("""
             CREATE TABLE IF NOT EXISTS tags (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,7 +114,6 @@ def init_tags_tables():
                 UNIQUE(name, user_id)
             )
         """)
-        # Связь многие-ко-многим
         cur.execute("""
             CREATE TABLE IF NOT EXISTS note_tags (
                 note_id INTEGER,
@@ -119,7 +126,6 @@ def init_tags_tables():
         conn.commit()
 
 def add_tag(user_id: int, tag_name: str) -> int:
-    """Добавляет тег в таблицу tags, возвращает его ID. Если тег уже есть, возвращает существующий ID."""
     tag_name = tag_name.strip().lower()
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
@@ -131,7 +137,6 @@ def add_tag(user_id: int, tag_name: str) -> int:
             conn.commit()
             return cur.lastrowid
         except sqlite3.IntegrityError:
-            # тег уже существует
             cur.execute(
                 "SELECT id FROM tags WHERE name = ? AND user_id = ?",
                 (tag_name, user_id)
@@ -139,7 +144,6 @@ def add_tag(user_id: int, tag_name: str) -> int:
             return cur.fetchone()[0]
 
 def add_note_tags(note_id: int, tag_ids: list):
-    """Привязывает теги к заметке."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         for tag_id in tag_ids:
@@ -150,7 +154,6 @@ def add_note_tags(note_id: int, tag_ids: list):
         conn.commit()
 
 def get_note_tags(note_id: int):
-    """Возвращает список названий тегов для заметки."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -161,7 +164,6 @@ def get_note_tags(note_id: int):
         return [row[0] for row in cur.fetchall()]
 
 def get_user_tags(user_id: int):
-    """Возвращает список всех тегов пользователя (с количеством заметок)."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -175,7 +177,6 @@ def get_user_tags(user_id: int):
         return cur.fetchall()
 
 def get_notes_by_tag(user_id: int, tag_name: str):
-    """Возвращает список (id, title) заметок пользователя с указанным тегом."""
     tag_name = tag_name.strip().lower()
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
@@ -189,12 +190,9 @@ def get_notes_by_tag(user_id: int, tag_name: str):
         return cur.fetchall()
 
 def update_note_tags(note_id: int, new_tag_ids: list):
-    """Заменяет теги заметки на новый список."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
-        # Удалить старые связи
         cur.execute("DELETE FROM note_tags WHERE note_id = ?", (note_id,))
-        # Добавить новые
         for tag_id in new_tag_ids:
             cur.execute(
                 "INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)",
