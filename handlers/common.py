@@ -8,7 +8,6 @@ router = Router()
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    """Приветственное сообщение с описанием всех возможностей бота."""
     welcome_text = (
         "🌟 *Добро пожаловать в Notes Bot!* 🌟\n\n"
         "Я помогу вам сохранять важные мысли, ставить напоминания и не забывать о делах.\n\n"
@@ -28,6 +27,7 @@ async def cmd_start(message: Message):
         "/tag <тег> – заметки с тегом\n"
         "/setcity <город> – настроить погоду\n"
         "/weather – погода сейчас\n"
+        "/menu – главное меню\n"
         "/help – подробная помощь\n\n"
         "Используйте кнопки ниже для быстрого доступа 👇"
     )
@@ -36,7 +36,6 @@ async def cmd_start(message: Message):
 @router.message(Command("help"))
 @router.message(F.text == "❓ Помощь")
 async def cmd_help(message: Message):
-    """Подробная справка по всем командам."""
     help_text = (
         "📘 *Справка по командам Notes Bot*\n\n"
         "📝 *Заметки:*\n"
@@ -54,19 +53,23 @@ async def cmd_help(message: Message):
         "🌤 *Погода:*\n"
         "/setcity <город> – установить ваш город для ежедневной рассылки в 7:00\n"
         "/weather – узнать погоду сейчас\n"
-        "/mycity – показать текущий город\n"
+        "/mycity – показать текущий город и часовой пояс\n"
         "/unsetcity – отписаться от утренней рассылки\n\n"
         "❓ *Другое:*\n"
-        "/help – показать это сообщение\n"
-        "Кнопки внизу – быстрый доступ к основным функциям\n\n"
-        "Если у вас есть вопросы или предложения, пишите @september1337"
+        "/menu – показать главное меню\n"
+        "/help – показать это сообщение\n\n"
+        "Если у вас есть вопросы или предложения, пишите @администратор"
     )
     await message.answer(help_text, parse_mode="Markdown", reply_markup=main_menu())
 
-# Обработчик кнопки "🌤 Погода" (уже был)
+@router.message(Command("menu"))
+@router.message(F.text == "📱 Меню")
+async def show_menu(message: Message):
+    await message.answer("Главное меню:", reply_markup=main_menu())
+
 @router.message(F.text == "🌤 Погода")
 async def weather_menu(message: Message):
-    city = db.get_user_city(message.from_user.id)
+    city, tz = db.get_user_city(message.from_user.id)
     has_city = city is not None
     kb = weather_inline(has_city)
     await message.answer("🌤 Выберите действие:", reply_markup=kb)

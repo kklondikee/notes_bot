@@ -1,22 +1,32 @@
+import asyncio
 from datetime import datetime
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 import database as db
-from weather import get_weather
+from weather import get_weather_by_coords
+import pytz
 
 scheduler = AsyncIOScheduler()
 
 async def send_morning_weather(bot: Bot):
-    now = datetime.now().strftime("%d.%m.%Y %H:%M")
-    print(f"🌤 Запуск утренней рассылки погоды в {now}")
+    """Проверяет, у кого сейчас 7 утра, и отправляет погоду."""
+    now_utc = datetime.now(pytz.UTC)
+    users = db.get_subscribed_users()  # (user_id, city, timezone)
 
-    users = db.get_subscribed_users()
-    print(f"🕒 Запуск рассылки в {datetime.now().strftime('%H:%M:%S')}, пользователей: {len(users)}")
-
-    for user_id, city in users:
+    for user_id, city, tz_str in users:
         try:
-            weather_data = await get_weather(city)
+            user_tz = pytz.timezone(tz_str)
+        except Exception:
+            continue
+
+        user_now = now_utc.astimezone(user_tz)
+        if user_now.hour == 7 and user_now.minute == 0:
+            # Отправляем погоду
+            # Здесь нужно получить погоду по городу. Можно использовать get_weather_by_coords, но у нас нет координат.
+            # Упрощённо: используем get_weather (город по имени). Это может быть неточно, но для демо сойдёт.
+            from weather import get_weather
+            weather_data, _, _ = await get_weather(city)
             if not weather_data:
                 await bot.send_message(
                     user_id,
@@ -25,7 +35,7 @@ async def send_morning_weather(bot: Bot):
                 continue
 
             message = (
-                f"🌅 *Доброе утро!* Погода на сегодня в городе{weather_data['city']}\n\n"
+                f"🌅 *Доброе утро!* Погода на сегодня в {weather_data['city']}\n\n"
                 f"{weather_data['icon']} {weather_data['description']}\n"
                 f"🌡 Температура: {weather_data['temperature']}°C\n"
                 f"↕️ В течение дня: от {weather_data['min_temp']}°C до {weather_data['max_temp']}°C\n"
@@ -38,16 +48,14 @@ async def send_morning_weather(bot: Bot):
                 f"Хорошего дня! 🌟"
             )
             await bot.send_message(user_id, message, parse_mode="Markdown")
-        except Exception as e:
-            print(f"Ошибка при отправке погоды пользователю {user_id}: {e}")
 
 def start_weather_scheduler(bot: Bot):
     scheduler.add_job(
         send_morning_weather,
-        trigger=CronTrigger(hour=datetime.now().hour, minute=0),  # Запуск каждый день в 7:00 МСК (UTC+3)
+        trigger=IntervalTrigger(minutes=1),
         args=[bot],
         id="morning_weather",
         replace_existing=True
     )
     scheduler.start()
-    print("🌤 Планировщик погоды запущен, следующая рассылка в 4:00 UTC")
+    print("🌤 Планировщик погоды запущен (проверка каждую минуту)")

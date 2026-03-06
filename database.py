@@ -6,6 +6,7 @@ DB_NAME = "notes.db"
 # ==================== ОСНОВНЫЕ ТАБЛИЦЫ ====================
 
 def init_db():
+    """Создаёт таблицы, если их нет."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -30,7 +31,8 @@ def init_db():
         conn.commit()
     init_tags_tables()
     init_users_table()
-    init_shared_table()   # <-- добавить эту строку
+    init_shared_table()
+    init_mail_table()
 
 def add_note(user_id: int, title: str, text: str, remind_at: str = None) -> int:
     with sqlite3.connect(DB_NAME) as conn:
@@ -208,6 +210,19 @@ def get_user_tags(user_id: int):
         """, (user_id,))
         return cur.fetchall()
 
+def get_notes_by_tag(user_id: int, tag_name: str):
+    tag_name = tag_name.strip().lower()
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT n.id, n.title FROM notes n
+            JOIN note_tags nt ON n.id = nt.note_id
+            JOIN tags t ON nt.tag_id = t.id
+            WHERE n.user_id = ? AND t.name = ?
+            ORDER BY n.id DESC
+        """, (user_id, tag_name))
+        return cur.fetchall()
+
 def update_note_tags(note_id: int, new_tag_ids: list):
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
@@ -219,7 +234,7 @@ def update_note_tags(note_id: int, new_tag_ids: list):
             )
         conn.commit()
 
-# ==================== ПОЛЬЗОВАТЕЛИ И ГОРОДА ====================
+# ==================== ПОЛЬЗОВАТЕЛИ И ГОРОДА (обновлено) ====================
 
 def init_users_table():
     """Создаёт таблицу users, если её нет."""
@@ -229,100 +244,50 @@ def init_users_table():
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 city TEXT,
+                timezone TEXT,
                 subscribed INTEGER DEFAULT 1
             )
         """)
         conn.commit()
 
-def set_user_city(user_id: int, city: str):
-    """Сохраняет город пользователя."""
+def set_user_city(user_id: int, city: str, timezone: str):
+    """Сохраняет город и часовой пояс пользователя."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO users (user_id, city) VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET city = ?
-        """, (user_id, city, city))
+            INSERT INTO users (user_id, city, timezone) VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET city = ?, timezone = ?
+        """, (user_id, city, timezone, city, timezone))
         conn.commit()
 
-def get_user_city(user_id: int) -> str | None:
-    """Возвращает сохранённый город пользователя или None."""
+def get_user_city(user_id: int):
+    """Возвращает (city, timezone) или (None, None)."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
-        cur.execute("SELECT city FROM users WHERE user_id = ?", (user_id,))
+        cur.execute("SELECT city, timezone FROM users WHERE user_id = ?", (user_id,))
         row = cur.fetchone()
-        return row[0] if row else None
+        return row if row else (None, None)
 
 def unsubscribe_user(user_id: int):
-    """Отписывает пользователя от рассылки."""
+    """Отписывает пользователя от рассылки (город и таймзона не удаляются)."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO users (user_id, city, subscribed) VALUES (?, NULL, 0)
-            ON CONFLICT(user_id) DO UPDATE SET city = NULL, subscribed = 0
+            INSERT INTO users (user_id, city, timezone, subscribed) VALUES (?, NULL, NULL, 0)
+            ON CONFLICT(user_id) DO UPDATE SET city = NULL, timezone = NULL, subscribed = 0
         """, (user_id,))
         conn.commit()
 
 def get_subscribed_users():
-    """Возвращает список (user_id, city) всех подписанных пользователей."""
+    """Возвращает список (user_id, city, timezone) всех подписанных пользователей."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
-        cur.execute("SELECT user_id, city FROM users WHERE city IS NOT NULL AND subscribed = 1")
-        return cur.fetchall()
-
-# ==================== ПОЛЬЗОВАТЕЛИ И ГОРОДА ====================
-
-def init_users_table():
-    """Создаёт таблицу users, если её нет."""
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                city TEXT,
-                subscribed INTEGER DEFAULT 1
-            )
-        """)
-        conn.commit()
-
-def set_user_city(user_id: int, city: str):
-    """Сохраняет город пользователя."""
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO users (user_id, city) VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET city = ?
-        """, (user_id, city, city))
-        conn.commit()
-
-def get_user_city(user_id: int) -> str | None:
-    """Возвращает сохранённый город пользователя или None."""
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT city FROM users WHERE user_id = ?", (user_id,))
-        row = cur.fetchone()
-        return row[0] if row else None
-
-def unsubscribe_user(user_id: int):
-    """Отписывает пользователя от рассылки."""
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO users (user_id, city, subscribed) VALUES (?, NULL, 0)
-            ON CONFLICT(user_id) DO UPDATE SET city = NULL, subscribed = 0
-        """, (user_id,))
-        conn.commit()
-
-def get_subscribed_users():
-    """Возвращает список (user_id, city) всех подписанных пользователей."""
-    with sqlite3.connect(DB_NAME) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT user_id, city FROM users WHERE city IS NOT NULL AND subscribed = 1")
+        cur.execute("SELECT user_id, city, timezone FROM users WHERE city IS NOT NULL AND timezone IS NOT NULL AND subscribed = 1")
         return cur.fetchall()
 
 # ==================== СОВМЕСТНЫЕ ЗАМЕТКИ ====================
 
 def init_shared_table():
-    """Создаёт таблицу для совместных заметок."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -336,10 +301,7 @@ def init_shared_table():
         """)
         conn.commit()
 
-# Добавьте вызов init_shared_table() в функцию init_db() после создания других таблиц.
-
 def share_note(note_id: int, owner_id: int, target_user_id: int):
-    """Предоставляет доступ к заметке другому пользователю."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute(
@@ -349,7 +311,6 @@ def share_note(note_id: int, owner_id: int, target_user_id: int):
         conn.commit()
 
 def get_shared_notes(user_id: int):
-    """Возвращает список заметок, доступных пользователю (чужие, расшаренные с ним)."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
         cur.execute("""
@@ -359,19 +320,17 @@ def get_shared_notes(user_id: int):
             WHERE s.shared_with_user_id = ?
             ORDER BY n.id DESC
         """, (user_id,))
-        return cur.fetchall()  # список (id, title, owner_id)
+        return cur.fetchall()
 
 def get_shared_note(note_id: int, user_id: int):
-    """Возвращает заметку, если пользователь имеет к ней доступ (владелец или есть в shared)."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
-        # Проверяем, является ли пользователь владельцем
+        # Проверяем владельца
         cur.execute("SELECT user_id FROM notes WHERE id = ?", (note_id,))
         row = cur.fetchone()
         if row and row[0] == user_id:
-            # владелец – полный доступ
             cur.execute("SELECT title, text, remind_at FROM notes WHERE id = ?", (note_id,))
-            return cur.fetchone() + (True,)  # (title, text, remind_at, is_owner)
+            return cur.fetchone() + (True,)
         # Иначе проверяем shared
         cur.execute("""
             SELECT n.title, n.text, n.remind_at, n.user_id
@@ -381,5 +340,68 @@ def get_shared_note(note_id: int, user_id: int):
         """, (note_id, user_id))
         row = cur.fetchone()
         if row:
-            return row + (False,)  # (title, text, remind_at, owner_id, is_owner=False)
+            return row + (False,)
         return None
+
+# ==================== ПОЧТОВЫЕ АККАУНТЫ ====================
+
+def init_mail_table():
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mail_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                email TEXT NOT NULL,
+                password TEXT NOT NULL,
+                imap_server TEXT NOT NULL,
+                imap_port INTEGER DEFAULT 993,
+                last_uid INTEGER DEFAULT 0,
+                enabled INTEGER DEFAULT 1,
+                UNIQUE(user_id, email)
+            )
+        """)
+        conn.commit()
+
+def add_mail_account(user_id: int, email: str, password: str, server: str, port: int = 993):
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT OR REPLACE INTO mail_accounts 
+            (user_id, email, password, imap_server, imap_port, last_uid, enabled)
+            VALUES (?, ?, ?, ?, ?, 0, 1)
+        """, (user_id, email, password, server, port))
+        conn.commit()
+
+def get_user_mail_accounts(user_id: int):
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, email, imap_server, imap_port, enabled
+            FROM mail_accounts
+            WHERE user_id = ?
+            ORDER BY email
+        """, (user_id,))
+        return cur.fetchall()
+
+def get_all_mail_accounts():
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, user_id, email, password, imap_server, imap_port, last_uid
+            FROM mail_accounts
+            WHERE enabled = 1
+        """)
+        return cur.fetchall()
+
+def update_mail_last_uid(account_id: int, last_uid: int):
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE mail_accounts SET last_uid = ? WHERE id = ?", (last_uid, account_id))
+        conn.commit()
+
+def delete_mail_account(account_id: int, user_id: int):
+    with sqlite3.connect(DB_NAME) as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM mail_accounts WHERE id = ? AND user_id = ?", (account_id, user_id))
+        conn.commit()

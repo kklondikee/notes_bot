@@ -2,27 +2,47 @@ import httpx
 from open_meteo import OpenMeteo
 from open_meteo.models import DailyParameters, HourlyParameters
 
-async def get_weather(city: str) -> dict | None:
+async def get_weather(city: str):
+    """
+    Получает погоду и часовой пояс для указанного города.
+    Возвращает (weather_data, timezone, geo_options) или (None, None, None) при ошибке.
+    Если geo_options не пуст, значит город неоднозначен и нужно выбирать.
+    """
     try:
-        # Геокодинг
         async with httpx.AsyncClient() as client:
             geo_response = await client.get(
                 "https://nominatim.openstreetmap.org/search",
                 params={
                     "q": city,
                     "format": "json",
-                    "limit": 1
+                    "limit": 5,
                 },
                 headers={"User-Agent": "NotesBot/1.0"}
             )
             geo_data = geo_response.json()
             if not geo_data:
-                return None
-            lat = float(geo_data[0]["lat"])
-            lon = float(geo_data[0]["lon"])
-            display_name = geo_data[0]["display_name"].split(",")[0]
+                return None, None, None
 
-        # Получаем погоду
+        if len(geo_data) > 1:
+            geo_options = []
+            for idx, place in enumerate(geo_data):
+                display_name = place.get("display_name", city)
+                short_name = display_name[:50] + "..." if len(display_name) > 50 else display_name
+                geo_options.append({
+                    "id": idx,
+                    "lat": float(place["lat"]),
+                    "lon": float(place["lon"]),
+                    "name": short_name,
+                    "full_name": display_name,
+                })
+            return None, None, geo_options
+
+        # Единственный вариант
+        lat = float(geo_data[0]["lat"])
+        lon = float(geo_data[0]["lon"])
+        display_name = geo_data[0]["display_name"].split(",")[0]
+
+        # Получаем погоду через Open-Meteo
         async with OpenMeteo() as open_meteo:
             forecast = await open_meteo.forecast(
                 latitude=lat,
@@ -47,57 +67,118 @@ async def get_weather(city: str) -> dict | None:
 
         current = forecast.current_weather
         if not current:
-            return None
+            return None, None, None
 
-        # Преобразуем current_weather в словарь для безопасного доступа
-        if hasattr(current, '__dict__'):
-            current_dict = current.__dict__
-        else:
-            current_dict = dict(current)
-
+        timezone = forecast.timezone
         daily = forecast.daily
         hourly = forecast.hourly
 
-        weather_code = current_dict.get('weathercode') or current_dict.get('weather_code') or 0
+        weather_code = current.weathercode
         icon = get_weather_icon(weather_code)
-        temp = current_dict.get('temperature', 0)
-        wind_speed = current_dict.get('windspeed', 0)
-        wind_direction = current_dict.get('winddirection', 0)
-        clothing_advice = get_clothing_advice(temp, weather_code)
+        temp = current.temperature
+        wind_speed = current.windspeed
 
-        # Извлечение данных из daily (с защитой от отсутствия)
         max_temp = round(daily.temperature_2m_max[0]) if daily.temperature_2m_max else None
         min_temp = round(daily.temperature_2m_min[0]) if daily.temperature_2m_min else None
         precipitation = daily.precipitation_sum[0] if daily.precipitation_sum else 0
         sunrise = daily.sunrise[0].strftime("%H:%M") if daily.sunrise else None
         sunset = daily.sunset[0].strftime("%H:%M") if daily.sunset else None
 
-        # Влажность из hourly (первый час)
         humidity = None
         if hourly and hasattr(hourly, 'relative_humidity_2m') and hourly.relative_humidity_2m:
             humidity = hourly.relative_humidity_2m[0]
 
-        return {
+        weather_data = {
             "city": display_name,
             "icon": icon,
             "temperature": round(temp),
             "humidity": humidity,
             "wind_speed": round(wind_speed),
-            "wind_direction": wind_direction,
             "description": get_weather_description(weather_code),
             "max_temp": max_temp,
             "min_temp": min_temp,
             "precipitation": precipitation,
             "sunrise": sunrise,
             "sunset": sunset,
-            "clothing_advice": clothing_advice,
+            "clothing_advice": get_clothing_advice(temp, weather_code),
         }
+        return weather_data, timezone, None
 
     except Exception as e:
         print(f"Ошибка при получении погоды: {e}")
         import traceback
         traceback.print_exc()
-        return None
+        return None, None, None
+
+async def get_weather_by_coords(lat: float, lon: float, city_name: str = None):
+    """Получает погоду по координатам. city_name используется для отображения."""
+    try:
+        async with OpenMeteo() as open_meteo:
+            forecast = await open_meteo.forecast(
+                latitude=lat,
+                longitude=lon,
+                current_weather=True,
+                daily=[
+                    DailyParameters.SUNRISE,
+                    DailyParameters.SUNSET,
+                    DailyParameters.TEMPERATURE_2M_MAX,
+                    DailyParameters.TEMPERATURE_2M_MIN,
+                    DailyParameters.PRECIPITATION_SUM,
+                    DailyParameters.WIND_SPEED_10M_MAX,
+                ],
+                hourly=[
+                    HourlyParameters.TEMPERATURE_2M,
+                    HourlyParameters.RELATIVE_HUMIDITY_2M,
+                    HourlyParameters.WIND_SPEED_10M,
+                    HourlyParameters.PRECIPITATION,
+                ],
+                timezone="auto"
+            )
+
+        current = forecast.current_weather
+        if not current:
+            return None, None
+
+        timezone = forecast.timezone
+        daily = forecast.daily
+        hourly = forecast.hourly
+
+        weather_code = current.weathercode
+        icon = get_weather_icon(weather_code)
+        temp = current.temperature
+        wind_speed = current.windspeed
+
+        max_temp = round(daily.temperature_2m_max[0]) if daily.temperature_2m_max else None
+        min_temp = round(daily.temperature_2m_min[0]) if daily.temperature_2m_min else None
+        precipitation = daily.precipitation_sum[0] if daily.precipitation_sum else 0
+        sunrise = daily.sunrise[0].strftime("%H:%M") if daily.sunrise else None
+        sunset = daily.sunset[0].strftime("%H:%M") if daily.sunset else None
+
+        humidity = None
+        if hourly and hasattr(hourly, 'relative_humidity_2m') and hourly.relative_humidity_2m:
+            humidity = hourly.relative_humidity_2m[0]
+
+        weather_data = {
+            "city": city_name or "Неизвестно",
+            "icon": icon,
+            "temperature": round(temp),
+            "humidity": humidity,
+            "wind_speed": round(wind_speed),
+            "description": get_weather_description(weather_code),
+            "max_temp": max_temp,
+            "min_temp": min_temp,
+            "precipitation": precipitation,
+            "sunrise": sunrise,
+            "sunset": sunset,
+            "clothing_advice": get_clothing_advice(temp, weather_code),
+        }
+        return weather_data, timezone
+
+    except Exception as e:
+        print(f"Ошибка при получении погоды по координатам: {e}")
+        return None, None
+
+# --- Вспомогательные функции ---
 
 def get_weather_icon(code: int) -> str:
     if code == 0:
